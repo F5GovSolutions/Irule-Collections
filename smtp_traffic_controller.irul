@@ -1,10 +1,19 @@
 ltm rule /Common/smtp_traffic_controller {
+# This irule contains the traffic events used by the smtp_protocol_security irule to provide secuirty for Simple Mail Transfer Protocol (SMTP) traffic.
+# All configuration is handled by the smtp_protocol_security irule and there is no need to modify anything in this irule. However, you must attach this
+# irule to your SMTP virtual server once you have finished configuring the smtp_protocol_security irule. 
+#
+# Note: Do not attach any SMTP or SMTPS profile to the virtual server. It does require a Client/Server SSL profile if you intend to support STARTTLS.
+#
+# (Do not modify anything beyond this point)
+# ==============================================================================================================================================================
+
 when CLIENT_ACCEPTED priority 0 {
     # Disable SSL for client and signal to begin listening for STARTTLS
     SSL::disable
     table set stls_activation "listening"
     call smtp_primitive_procedures::transaction command "CONNECTED"
-    
+
 }
 
 when SERVER_CONNECTED priority 0 {
@@ -27,7 +36,7 @@ when SERVERSSL_HANDSHAKE priority 0 {
 when CLIENT_DATA priority 0 {
     # Process the client data
     call smtp_protocol_security::client_data [string trim [TCP::payload]]
-    
+
     # Release the payload
     TCP::release
 
@@ -58,7 +67,7 @@ when SERVER_DATA priority 0 {
 when CLIENTSSL_DATA priority 0 {
     # Process the client data
     call smtp_protocol_security::client_data [string trim [SSL::payload]]
-    
+
     # Release the payload
     SSL::release
     SSL::collect
@@ -67,7 +76,7 @@ when CLIENTSSL_DATA priority 0 {
 when SERVERSSL_DATA priority 0 {
     # Process the server data
     call smtp_protocol_security::server_data [string trim [SSL::payload]]
-    
+
     # Release the payload
     SSL::release
     SSL::collect
@@ -83,11 +92,10 @@ when CLIENT_CLOSED {
     if {$static::transaction_trace} {
         call smtp_primitive_procedures::secev "info" false "Transaction trace" [table lookup transaction_trace]
     }
-    
+
     table delete collecting
     table delete transaction
     table delete transaction_trace
     table delete -subtable transaction -all
 }
-definition-checksum 920fdd33ab33d92e9a76b55ffa763358
 }

@@ -1,5 +1,12 @@
 ltm rule /Common/smtp_primitive_procedures {
-# iRule containing generic procedures used for SMTP Traffic
+# This irule contains the generic procedures used by the smtp_protocol_security irule to provide secuirty for Simple Mail Transfer Protocol (SMTP) traffic.
+# All configuration is handled by the smtp_protocol_security irule and there is no need to modify anything in this irule.
+#
+#
+#
+#
+# (Do not modify anything beyond this point)
+# ==============================================================================================================================================================
 
 proc secev {level blocked violations message} {
     set event ""
@@ -60,7 +67,7 @@ proc respond { code context } {
         530 { set message "530 Must issue a STARTTLS command first" }
         550 { set message "550 Requested action not taken: $context" }
     }
-    
+
     switch -- [table lookup stls_activation] {
         "listening" {
             TCP::respond "[string trim $message]\r\n"
@@ -71,7 +78,7 @@ proc respond { code context } {
             SSL::payload replace 0 [SSL::payload length] ""
         }
     }
-    
+
     call smtp_primitive_procedures::transaction response $code
 }
 
@@ -80,11 +87,11 @@ proc transaction {context value} {
     if {[table lookup transaction] == ""} {
         table set transaction "|"
     }
-    
+
     if {$static::transaction_trace && [table lookup transaction_trace] == ""} {
         table set transaction_trace "|"
     }
-    
+
     switch -- $context {
         command {
             set response [table lookup -subtable transaction response]
@@ -112,5 +119,4 @@ proc transaction {context value} {
         }
     }
 }
-definition-checksum 080b324d4b1abd907e901dbf72f59894
 }

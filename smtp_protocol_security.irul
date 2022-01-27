@@ -1,4 +1,14 @@
 ltm rule /Common/smtp_protocol_security {
+# This irule contains the configuration settings and program logic to provide secuirty for Simple Mail Transfer Protocol (SMTP) traffic.
+# It was devleoped as a direct replacement to the SMTP and SMTPS profiles provided by LTM and ASM. To enable, modify the configuration below
+# to suit your envrionment then attach the smtp_traffic_controller irule to your SMTP virtual server.
+#
+#
+#
+#
+# Begin Configuration
+# ==============================================================================================================================================================
+#
 when RULE_INIT priority 0 {
     # TO DO: Implement debug logging
     set static::smtp_debug_mode 0 ;# 0: disabled | 1: enabled
@@ -75,21 +85,23 @@ when RULE_INIT priority 0 {
     set static::commands_permit {ATRN AUTH BDAT DATA EHLO ETRN HELO MAIL NOOP QUIT RCPT RSET STARTTLS}
     set static::commands_prohibit {EXPN HELP SAML SEND SOML TURN VRFY}
     set static::commands_action 3 ;# 0: disabled | 1: alarm | 2: block | 3: alarm + block
-    
-    
+
+
     # STARTTLS Activation Mode
     # Specifies whether the system requires, allows, or disallows STARTTLS activation for Simple Mail Transfer Protocol Security (SMTPS) traffic. 
 
     set static::stls_mode 1 ;# 0: none | 1: allow | 2: required
-    
+
     # Trace Transaction
     # Specifies whether the system maitains a record of the entire traction throughout the lifetime of the connection. 
     # A trace consits of client commands and the SMTP server's response code. If more information such as buffer data is required, enable debug logging.
-    
+
     set static::transaction_trace 1 ;# 0: disabled | 1: enabled
 
 }
-
+# End of Configuration (Do not modify anything beyond this point)
+# ==============================================================================================================================================================
+#
 
 proc allowed_receiving_domain { domain } {
     if { [llength $static::ard_names] && $static::ard_action ne 0 } {
@@ -119,13 +131,13 @@ proc allowed_receiving_domain { domain } {
 proc client_data { payload } {
     if { [catch {
         scan [string toupper $payload] {%s%*s} command
-        
+
         # Evaluate if a data collection is in progress
         if { [table lookup collecting] == "" } {
             call smtp_primitive_procedures::transaction command $command
         }
-        
-        
+
+
         # Evaluate STARTTLS Activation Mode
         if { $static::stls_mode == 2 && [table lookup stls_activation] ne "ready" } {
             # STARTTLS is required
@@ -133,7 +145,7 @@ proc client_data { payload } {
                 call smtp_primitive_procedures::respond 530 ""
             }
         }
-        
+
         # TO DO: Evaluate Command Sequence
         # ATRN AUTH BDAT DATA EHLO ETRN HELO HELP MAIL NOOP QUIT RCPT RSET SAML SEND SOML STARTTLS TURN VRFY
         switch -- $command {
@@ -141,94 +153,94 @@ proc client_data { payload } {
             EHLO {
                 # TO DO: Evaluate syntax
                 # TO DO: Evaluate 
-                
+
             }
-            
+
             STARTTLS {
                 # TO DO: Evaluate syntax
-                
+
                 # Evaluate STARTTLS Activation Mode
                 if { $static::stls_mode == 0 } {
                     # STARTTLS is not permitted
                     call smtp_primitive_procedures::respond 502 ""
                 }
-                
+
             }
-            
+
             MAIL {
                 # Evaluate Syntax
                 if { [scan [string toupper $payload] {MAIL FROM:%s %s} sender args] < 1 } {
                     # Invalid syntax for MAIL command
                     call smtp_primitive_procedures::respond 501 ""
                 }
-                
+
                 # Evaluate Order Of Operations
                 set transaction [table lookup transaction]
                 if { $transaction contains "| MAIL (354) |" && ! [expr {$transaction contains "| BDAT (250) |" || $transaction contains "| . (250) |"}] } {
                     # A MAIL transaction is already in progress
                     call smtp_primitive_procedures::respond 503 ""
                 }
-                
+
                 # TO DO: Evaluate Disallowed Mail From Address
-                
+
                 # TO DO: Evaluate Disallowed Senders Domain/IP Address
-                
+
                 # TO DO: Evaluate DNS SPF Record
-                
+
                 # TO DO: Evaluate Non Existent Sender's Email Domain
-                
+
                 # TO DO: Evaluate Rate Limit per Sender Domain
-                
+
                 # TO DO: Evaluate Sender DNS Validation
             }
-            
+
             RCPT {
                 # TO DO: Evaluate Syntax
                 if { [scan [string toupper $payload] {RCPT TO:%s %s} sender args] < 1 || ! [expr {$sender contains "@"}] } {
                     # Invalid syntax for RCPT command
                     call smtp_primitive_procedures::respond 501 ""
                 }
-                
+
                 # TO DO: Evaluate Order Of Operations
 
-                
+
                 # Evaluate Allowed Receiving Domain
                 set address [string map {< "" > ""} [getfield [getfield $payload " " 2] ":" 2]]
                 set domain [string trim [getfield $address "@" 2]]
                 call smtp_protocol_security::allowed_receiving_domain $domain
-                
+
                 # TO DO: Evaluate Rate Limit per Receiver Domain
-                
+
             }
-            
+
             BDAT -
             DATA {
                 table set collecting 1
             }
-            
+
             RSET {
                 # Validate syntax
-                 
+
                  if {[string toupper $payload] ne "RSET"} {
                     # Invalid syntax for RSET command
                     call smtp_primitive_procedures::respond 501 ""
                  }
-                
+
                 # Clear sequence table
                 table delete transaction
             }
-            
+
             default {
                 # TO DO: Evaluate Syntax
-                
+
                 # Evaluate SMTP Command
                 if { [table lookup collecting] == "" } {
                     call smtp_protocol_security::smtp_commands $command
                 }
-                
+
             }
         }
-        
+
     } err]} { 
         if { [string tolower $payload] ne "quit" } {
             log local0.err "Error occured while prcessing client data: $err"
@@ -255,27 +267,27 @@ proc sender_dns_validation { sender } { }
 
 proc server_data { payload } {
     call smtp_primitive_procedures::transaction response [string range $payload 0 2]
-    
+
     if { [catch {
         if { [string tolower $payload] contains "250-starttls" && $static::stls_mode == 0} {
             # Remove STARTTLS from the options list
             set modified_payload "[string map {250-STARTTLS\r\n ""} $payload]\r\n"
-            
+
             if { [table lookup stls_activation] == "ready" } {
                 SSL::payload replace 0 [SSL::payload length] $modified_payload
             } else {
                 TCP::payload replace 0 [TCP::payload length] $modified_payload
             }
         }
-    
+
         if { [string tolower $payload] contains "ready to start tls" } {
             table set stls_activation "ready"
         }
-        
+
         if {$payload starts_with "250" && [table lookup collecting] ne ""} {
             table delete collecting
         }
-        
+
     } err]} { 
         log local0.err "Error occured while prcessing server data: $err"
     }
@@ -284,7 +296,7 @@ proc server_data { payload } {
 proc smtp_commands { command } {
     set permitted [expr { [lsearch -exact $static::commands_permit $command] ne -1 }]
     set prohibited [expr { [lsearch -exact $static::commands_prohibit $command] ne -1 }]
-    
+
     # Validate SMTP command
     if { $permitted || $static::commands_action == 0} {
         set prohibited 0
@@ -292,7 +304,7 @@ proc smtp_commands { command } {
         # Unknown commands should be prohibited
         set prohibited 1
     }
-    
+
     if { $prohibited } {
         switch -- $static::commands_action {
             1 { # Log event data to the ASM faciility and allow processing to continue
@@ -308,5 +320,4 @@ proc smtp_commands { command } {
         }
     }
 }
-definition-checksum 2a4d3ba53ac5b8d235859ce185899a6c
 }
