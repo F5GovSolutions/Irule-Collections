@@ -1,0 +1,132 @@
+#Based off of page 17 of
+#https://www.whitehouse.gov/wp-content/uploads/2021/08/M-21-31-Improving-the-Federal-Governments-Investigative-and-Remediation-Capabilities-Related-to-Cybersecurity-Incidents.pdf
+#By default logging is set to local /var/log/ltm, this is not recommended for production
+#HTTP protocol compliane RFC 7230 requires WAF, this iRule does not support WAF or protocol compliance. There is another version of this iRule with WAF and protocol compliance
+
+when CLIENT_ACCEPTED {
+
+    #Logging, local = 0 /var/log/ltm, remote = 1
+    set log_local_or_remote_logging "0"
+    #Set remote logging TCP or UDP
+    set remote_logging_protocol "UDP"
+    #This pool must exist if logging remotely and contain the logging servers
+    set logging_pool "HSL_Splunk_514_Pool"
+
+    #Customize per load balancer
+    set resource_id "BIGIPCluster1"
+
+}
+
+when HTTP_REQUEST {
+
+    set connection_type ""
+    if { [SSL::mode] } {
+
+        set http_scheme "https://"
+        set connection_type "https"
+
+    } else {
+
+        set http_scheme "http://"
+        set connection_type "http"
+
+    }
+
+    #Date and time
+    set req_start_time [clock format [clock seconds] -format "%Y/%m/%d %H:%M:%S"]
+    #Client IP:Port
+    set client_ipport "[IP::client_addr]:[TCP::client_port]"
+    #Target IP:Port
+    set target_ipport "[IP::local_addr]:[TCP::local_port]"
+    #Request processing time, calculated later. Time the load balancer takes to send request to target. In ms
+    set request_processing_time ""
+    #Target processing time, calculated later. Time the target takes to respond to the load balancer. In ms
+    set target_processing_time ""
+    #Response processing time, calculated later. Time the load balancer to respond to the client, taking into consideration the targets response time. In ms
+    set response_processing_time ""
+    #Status code from load balancer
+    set status_code_loadbalancer ""
+    #Target status code
+    set status_code_target ""
+    #Received bytes
+    set ip_bytes_received [IP::stats bytes in]
+    #Bytes Sent
+    set ip_bytes_sent [IP::stats bytes out]
+    #Request
+    set request "[lindex [HTTP::request] 0] $http_scheme[HTTP::host][lindex [HTTP::request] 1] [lindex [HTTP::request] 2]"
+    #User Agent
+    set user_agent [HTTP::header "User-Agent"]
+    #SSL Cipher
+    set ssl_cipher [SSL::cipher name]
+    #SSL Protocol
+    set ssl_protocol [SSL::cipher version]
+    #SNI Domain
+    set sni_domain [SSL::sni name]
+    #Matched rule priority, this is the iRule default, change if the priority is altered
+    set matched_rule_priority 500
+    #Actions executed
+    set actions_executed "Request allowed"
+    #Redirect url
+    set redirect_url "Not a redirect"
+    #Error reason
+    set error_reason "No error"
+    #Target IP:port list
+    set target_ipport_list ""
+    #Target status code list
+    set target_status_code_list ""
+    #RFC 7230 compliance (HTTP/1.1)
+    set rfc7230_compliance "HTTP compliance not checked"
+
+    if { [HTTP::header Content-Length] > 0 } then {
+
+        set req_length [HTTP::header "Content-Length"]
+
+    } else {
+
+        set req_length 0
+
+    }
+
+    set time_request_received [clock clicks -milliseconds]
+
+}
+
+when HTTP_REQUEST_SEND {
+
+ set req_send_time  [clock clicks -milliseconds]
+ set request_processing_time [expr {[clock clicks -milliseconds] - $req_send_time}]
+
+}
+
+when HTTP_RESPONSE {
+
+    set target_ipport_list "[IP::server_addr]:[TCP::server_port]"
+    set target_status_code_list [HTTP::status]
+    set status_code_target [HTTP::status]
+    set target_processing_time [expr {[clock clicks -milliseconds] - $req_send_time}]
+
+}
+
+when HTTP_RESPONSE_RELEASE {
+
+     if { [HTTP::is_redirect] } {
+
+          set redirect_url "[HTTP::header value Location]"
+
+    }
+
+    set response_processing_time [expr {[clock clicks -milliseconds] - $time_request_received}]
+    set status_code_loadbalancer [HTTP::status]
+
+    if { $log_local_or_remote_logging eq "0"} {
+
+        log local0. "connection_type=\"$connection_type\",req_start_time=\"$req_start_time\",resource_id=\"$resource_id\",client_ipport=\"$client_ipport\",target_ipport=\"$target_ipport\",request_processing_time=\"$request_processing_time\",target_processing_time=\"$target_processing_time\",response_processing_time=\"$response_processing_time\",status_code_loadbalancer=\"$status_code_loadbalancer\",status_code_target=\"$status_code_target\",ip_bytes_received=\"$ip_bytes_received\",ip_bytes_sent=\"$ip_bytes_sent\",request=\"$request\",user_agent=\"$user_agent\",ssl_cipher=\"$ssl_cipher\",ssl_protocol=\"$ssl_protocol\",sni_domain=\"$sni_domain\",matched_rule_priority=\"$matched_rule_priority\",actions_executed=\"$actions_executed\",redirect_url=\"$redirect_url\",error_reason=\"$error_reason\",target_ipport_list=\"$target_ipport_list\",target_status_code_list=\"$target_status_code_list\",rfc7230_compliance=\"$rfc7230_compliance\""
+
+    } else {
+
+        set hsl [HSL::open -proto $hsl_proto -pool $logging_pool]
+        HSL::send $hsl "connection_type=\"$connection_type\",req_start_time=\"$req_start_time\",resource_id=\"$resource_id\",client_ipport=\"$client_ipport\",target_ipport=\"$target_ipport\",request_processing_time=\"$request_processing_time\",target_processing_time=\"$target_processing_time\",response_processing_time=\"$response_processing_time\",status_code_loadbalancer=\"$status_code_loadbalancer\",status_code_target=\"$status_code_target\",ip_bytes_received=\"$ip_bytes_received\",ip_bytes_sent=\"$ip_bytes_sent\",request=\"$request\",user_agent=\"$user_agent\",ssl_cipher=\"$ssl_cipher\",ssl_protocol=\"$ssl_protocol\",sni_domain=\"$sni_domain\",matched_rule_priority=\"$matched_rule_priority\",actions_executed=\"$actions_executed\",redirect_url=\"$redirect_url\",error_reason=\"$error_reason\",target_ipport_list=\"$target_ipport_list\",target_status_code_list=\"$target_status_code_list\",rfc7230_compliance=\"$rfc7230_compliance\""
+
+    }
+
+}
