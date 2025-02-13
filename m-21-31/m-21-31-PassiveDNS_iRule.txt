@@ -1,0 +1,100 @@
+#Still being developed
+#Requirements: dns profile on VIP
+# Derived from
+# https://www.whitehouse.gov/wp-content/uploads/2021/08/M-21-31-Improving-the-Federal-Governments-Investigative-and-Remediation-Capabilities-Related-to-Cybersecurity-Incidents.pdf
+#which is no located at
+#https://bidenwhitehouse.archives.gov/wp-content/uploads/2021/08/M-21-31-Improving-the-Federal-Governments-Investigative-and-Remediation-Capabilities-Related-to-Cybersecurity-Incidents.pdf
+
+### Passive DNS Log
+# Tuple (Rrname, Rrtype, Rdata)
+# Time_First
+# Time_Last
+# Count
+# Bailiwick
+# Sensor_Id
+# Zone_Time_First
+# Zone_Time_Last
+# Time_First_Ms
+# Time_Last_Ms
+# Origin
+# Count of Questions Asked by Source IP
+# Count of Questions Asked Overall
+# Count of Responses by Source IP
+# Query Size in Bytes
+# Response Size in Bytes
+# TTL per Record Returned
+# Request Was Made Via UDP, TCP or Both
+# Response Was Made Via UDP, TCP or Both
+# Passive DNS Source (Used to Identify Which Passive DNS Source Data Came From)
+
+#this iRule was written with the design choice of getting the data in the event its first available
+
+
+when RULE_INIT {
+
+    # tmsh list /sys global-settings get hostname field
+    set bigipHostname ""
+    #tmsh show /sys hardware
+    set bigipChassisSerial "564d5736-26ac-caa8-f2935bdc04cf"
+    set sensorIdPrepend "BIGIP-"
+    set static::sensorId $sensorIdPrepend$bigipChassisSerial
+
+}
+
+when CLIENT_ACCEPTED {
+
+    set clientIP [IP::remote_addr]
+
+}
+
+when DNS_REQUEST {
+
+    log local0. "$::TIMEZONE"
+     set ::TIMEZONE "+3:00"
+
+
+    set dateTime [clock format [clock seconds]]
+    log local0. "$dateTime"
+
+    # set m2131Time [clock format [clock  seconds]  -gmt 0 -format "%a, %d %b %Y %H:%M:%S %Z"]
+    set m2131Time [clock format [clock seconds] -format %Y-%m-%dT%k:%M:%S:%z -gmt 1 ]
+     log local0. "$m2131Time"
+    set m2131Time [clock format [clock seconds] -format %Y-%m-%dT%k:%M:%S:%z ]
+ log local0. "$m2131Time"
+   # set m2131Time [clock format $seconds -format %Y-%m-%dT%k:%M:%S.${ms}${::TIMEZONE}]
+   # log local0. "$m2131Time"
+    log local0. "DNSLen [DNS::len]"
+
+
+
+
+
+}
+when DNS_RESPONSE {
+
+    set rrs [DNS::answer]
+
+    set ipProtoName [ip_protocol]
+
+    if { [ip_protocol] == "17" }{
+
+        set ipProtoName "TCP"
+
+    } elseif { [ip_protocol] == "6" }{
+
+         set ipProtoName "UDP"
+
+    } else {
+
+         set ipProtoName "[ip_protocol]"
+
+    }
+
+    foreach rr $rrs {
+
+         log local0. "[DNS::rdata $rr] DNSTYPE: [DNS::type $rr] TTL: [DNS::ttl $rr] ipproto: $ipProtoName"
+
+     }
+    log local0. "DNSLen [DNS::len]"
+
+}
