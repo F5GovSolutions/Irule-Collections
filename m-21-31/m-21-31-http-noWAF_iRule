@@ -1,5 +1,6 @@
 #Based off of page 17 of
 #https://www.whitehouse.gov/wp-content/uploads/2021/08/M-21-31-Improving-the-Federal-Governments-Investigative-and-Remediation-Capabilities-Related-to-Cybersecurity-Incidents.pdf
+#Which is now located at https://bidenwhitehouse.archives.gov/wp-content/uploads/2021/08/M-21-31-Improving-the-Federal-Governments-Investigative-and-Remediation-Capabilities-Related-to-Cybersecurity-Incidents.pdf
 #By default logging is set to local /var/log/ltm, this is not recommended for production
 #HTTP protocol compliane RFC 7230 requires WAF, this iRule does not support WAF or protocol compliance. There is another version of this iRule with WAF and protocol compliance
 
